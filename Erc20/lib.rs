@@ -1,7 +1,7 @@
 #![cfg_attr(not(feature = "std"), no_std, no_main)]
 
 #[ink::contract]
-mod Erc20 {
+mod erc20 {
 
     use ink::storage::Mapping;
     use ink::prelude::string::String;
@@ -141,11 +141,14 @@ mod Erc20 {
             assert_eq!(erc20.balance_of(alice()),1000000);
         }
 
-        // #[ink::test]
-        // fn transfer_works() {
-        //     let erc20 = Erc20::new("Hivve".to_string(), 100000);
+        #[ink::test]
+        fn transfer_works() {
+            let mut erc20 = Erc20::new("Hivve".to_string(), 100000);
             
-        // }
+            assert!(erc20.transfer(bob(), 100).is_ok());
+            assert_eq!(erc20.balance_of(bob()), 100);
+            assert_eq!(erc20.balance_of(alice()), 100000 - 100);
+        }
         
     }
 
