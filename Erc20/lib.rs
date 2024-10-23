@@ -2,7 +2,6 @@
 
 #[ink::contract]
 mod erc20 {
-
     use ink::storage::Mapping;
     use ink::prelude::string::String;
 
@@ -21,6 +20,17 @@ mod erc20 {
         from: Option<AccountId>,
         #[ink(topic)]
         to: Option<AccountId>,
+        #[ink(topic)]
+        value: Balance
+    }
+
+    #[ink(event)]
+    pub struct Approval 
+    {
+        #[ink(topic)]
+        owner: Option<AccountId>,
+        #[ink(topic)]
+        spender: Option<AccountId>,
         #[ink(topic)]
         value: Balance
     }
@@ -78,7 +88,44 @@ mod erc20 {
         pub fn transfer(&mut self, to: AccountId, value: Balance) -> Result<(), Error> {
             let from = self.env().caller();
 
-            self.transfer_from_to(&from, &to, value)
+            self.transfer_from_to(&from, &to, value)?;
+
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn approve(&mut self, spender: AccountId, value: Balance) -> Result<(), Error> {
+
+            let caller = self.env().caller();
+
+            self.allowances.insert((&caller, &spender), &value);
+
+            self.env().emit_event(Approval {
+                owner: Some(caller),
+                spender: Some(spender),
+                value
+            });
+
+            Ok(())
+        }
+
+        #[ink(message)]
+        pub fn transfer_from(&mut self, from: AccountId, to: AccountId, amount: Balance) -> Result<(), Error> {
+            
+            let caller = self.env().caller();
+
+            let allowance = self.allowance(from, caller);
+
+            if allowance < amount {
+                return Err(Error::InsufficientAllowance);
+            }
+
+            self.allowances.insert((&from, &caller), &(allowance.checked_sub(amount).unwrap()));
+
+            self.transfer_from_to(&from, &to, amount)?;
+
+            Ok(())
+
         }
 
         fn transfer_from_to(&mut self, from: &AccountId, to: &AccountId, value: Balance) -> Result<(), Error> {
@@ -108,6 +155,8 @@ mod erc20 {
     #[cfg(test)]
     mod tests {
        
+        use ink::primitives::AccountId;
+
         use super::*;
 
         fn default_accounts() -> ink::env::test::DefaultAccounts<Environment> {
@@ -120,6 +169,10 @@ mod erc20 {
 
         fn bob() -> AccountId {
             default_accounts().bob
+        }
+
+        fn charlie() -> AccountId {
+            default_accounts().charlie
         }
 
 
@@ -148,6 +201,30 @@ mod erc20 {
             assert!(erc20.transfer(bob(), 100).is_ok());
             assert_eq!(erc20.balance_of(bob()), 100);
             assert_eq!(erc20.balance_of(alice()), 100000 - 100);
+        }
+
+        #[ink::test]
+        fn approve_works() {
+            let mut erc20 = Erc20::new("Hivve".to_string(), 100000);
+
+            assert!(erc20.approve(bob(), 100).is_ok());
+
+            assert_eq!(erc20.allowance(alice(), bob()), 100);
+        }
+
+        #[ink::test]
+        fn transfer_from_works() {
+            let mut erc20 = Erc20::new("Hivve".to_string(), 100000);
+
+            assert!(erc20.approve(bob(), 100).is_ok());
+
+            ink::env::test::set_caller::<Environment>(bob());
+
+            assert!(erc20.transfer_from(alice(), charlie(), 100).is_ok());
+
+            assert_eq!(erc20.balance_of(charlie()), 100);
+
+            assert_eq!(erc20.allowance(alice(), bob()), 0);
         }
         
     }
